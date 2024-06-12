@@ -16,6 +16,9 @@ THRESHOLD = 64 * 1024  # bytes
 RECEIVER_BUFFER_SIZE = 512 * 1024  # bytes
 HOST_IP = '127.0.0.1'   # The server's IP address
 
+# 同步問題
+lock = threading.Lock()
+
 # 是否有運算符號出現
 def contains_math_operators(s, operators):
     return any(op in s for op in operators)
@@ -64,13 +67,21 @@ def handle_request(pkt , client_socket):
         val = send_file(payload)
         if val == None:
             # perform DNS lookup
-            ip_address = socket.gethostbyname(payload)
-            tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
-                                       pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data=str(ip_address))
-            packet = tcp_header.pack()
-            client_socket.send(packet)
-            print("\tSent packet: ", tcp_header.__dict__)
-            return 
+            try: 
+                ip_address = socket.gethostbyname(payload)
+                tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
+                                        pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data=str(ip_address))
+                packet = tcp_header.pack()
+                client_socket.send(packet)
+                print("\tSent packet: ", tcp_header.__dict__)
+                return 
+            except:
+                tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
+                                        pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data="DNS lookup failed")
+                packet = tcp_header.pack()
+                client_socket.send(packet)
+                print("\tSent packet: ", tcp_header.__dict__)
+                return
         else:
             # file transmission (有需要分段送跟直接送的)
             if len(str(val)) > 1000:    # 扣除tcp header的長度 (1024 - 20 大約等於 1000)
@@ -144,13 +155,17 @@ def handle_client(client_socket):
 
     number = 1
     while True:
-        pkt = client_socket.recv(MSS)
+        pkt = client_socket.recv(MSS)  # 接收封包
         if not pkt:  # 如果收到空訊息，中斷迴圈
             break
         print("(Task %d)" %(number)); number += 1
         pkt = tcp.TCPHeader.unpack(pkt)
         print ("\treceive packet : " , pkt.__dict__)
+        
+        lock.acquire()
         handle_request(pkt , client_socket) # handle the request
+        lock.release()
+
         # wait for client's ACK
         pkt_fromClient = client_socket.recv(MSS)
         pkt_fromClient = tcp.TCPHeader.unpack(pkt_fromClient)
@@ -165,6 +180,7 @@ def server_program():
     # Create a TCP Socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     PORT = int(sys.argv[1])
+    print("Server local IP:", HOST_IP)
     print("My port: ", PORT , "\n")
     server_socket.bind((HOST_IP, PORT))
     server_socket.listen(5)
@@ -181,7 +197,7 @@ def server_program():
 
             all_threads.append(t)
     except KeyboardInterrupt:
-        print("Server stopped by ^C")
+        print(" Server stopped by ^C")
     finally:
         if server_socket:
             server_socket.close()

@@ -20,6 +20,8 @@ def client_program():
     print("Server's port number: ", PORT)
     print("\n(Connecting to server)")
     client_socket.connect((HOST, PORT))
+    # print client's information
+    print("(Client's IP address, Client's Port number): ", client_socket.getsockname())
     
     client_port = random.randint(1024, 65535)   # randomly assign client port number
     # Craft SYN packet

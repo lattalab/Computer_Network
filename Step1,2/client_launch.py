@@ -27,7 +27,7 @@ if __name__ == '__main__':
         tasks_per_client = []
 
         for i in range(num_clients):
-            tasks = input(f"Enter tasks for client {i+1} (separated by space): ").split()
+            tasks = input(f"Enter tasks for client {i+1} (separated by dot): ").split(',')
             tasks_per_client.append(tasks)
 
         launch_clients(HOST, PORT, num_clients, tasks_per_client)
