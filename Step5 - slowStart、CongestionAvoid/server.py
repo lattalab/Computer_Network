@@ -33,8 +33,6 @@ def should_drop_packet():
 
 # set timeout = 2 * RTT
 timeout = 2 * INITIAL_RTT  # ms
-# Delayed ACK 
-delay = 600 / 1000  # 600ms
 # CWND = how many numbers of MSS
 # Here, CWND also act as the character of Sender window to implement GO-BACK-N
 CWND = 1
@@ -65,14 +63,13 @@ def RWND_update():
         RWND = RECEIVER_BUFFER_SIZE
 
 def handle_request(pkt , client_socket):
-    global RWND ,CWND
+    global RWND ,CWND , THRESHOLD
     payload = str(pkt.data)  # The payload of the packet
+    timeoutFlag = 0 # 用來判斷是否有timeout發生
     # check FIN flag
     if pkt.flags == 'F':
         print("(trying to terminate TCP connection)")
-        # delay ACK
-        time.sleep(delay)
-        print("\t(*No more new segment, ACK for FIN send*)")
+
         # Send Server-FIN packet
         tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, pkt.ack_number, pkt.sequence_number+1, 'F', 65535)
         packet = tcp_header.pack()
@@ -106,7 +103,11 @@ def handle_request(pkt , client_socket):
                 print("\tPacket dropped: ", tcp_header.__dict__)
                 time.sleep(timeout / 1000)
                 print("\tTimeOut for Retransmitting packet...")
+                CWND = 1
+                timeoutFlag = 1
                 continue
+        if timeoutFlag == 1:
+            THRESHOLD /= 2; timeoutFlag = 0
         return
     else:
         # In this section, we will check if the payload is a domain name or a file name
@@ -132,7 +133,10 @@ def handle_request(pkt , client_socket):
                         print("\tPacket dropped: ", tcp_header.__dict__)
                         time.sleep(timeout / 1000)
                         print("\tTimeOut for Retransmitting packet...")
+                        CWND = 1; timeoutFlag =1
                         continue
+                if timeoutFlag == 1:
+                    THRESHOLD /= 2; timeoutFlag = 0
                 return 
             except: # DNS Failed
                 RWND_update()
@@ -149,7 +153,10 @@ def handle_request(pkt , client_socket):
                         print("\tPacket dropped: ", tcp_header.__dict__)
                         time.sleep(timeout / 1000)
                         print("\tTimeOut for Retransmitting packet...")
+                        CWND = 1; timeoutFlag = 1
                         continue
+                if timeoutFlag == 1:
+                    THRESHOLD /= 2; timeoutFlag = 0
                 return
         else:
             # file transmission (有需要分段送跟直接送的)
@@ -176,12 +183,13 @@ def handle_request(pkt , client_socket):
                             time.sleep(timeout / 1000)
                             print("\tTimeOut for Retransmitting packet...")
                             continue
-                    return 
+                    return
                 # 送CWND個封包
                 while idx < len_segments:
                     RWND_update()
                     counter = 0
                     for i in range(0, CWND):
+                        counter += 1 # 紀錄這次的CWND總值
                         start = time.time()
                         if idx < len_segments:
                             send_segment(idx, segments=segments, client_socket=client_socket)
@@ -195,35 +203,22 @@ def handle_request(pkt , client_socket):
                                     pkt_fromClient = tcp.TCPHeader.unpack(pkt_fromClient)
                                     seq = pkt_fromClient.ack_number
                                     ack = pkt_fromClient.sequence_number+len(pkt_fromClient.data)+1
+                                    print ("\treceive packet : " , pkt_fromClient.__dict__)
                                     break
                                 except socket.timeout:
                                     print("\tTimeout waiting for Client-ACK, retransmitting packet...")
-                                    time.sleep(timeout / 1000)
+                                    THRESHOLD /=2; timeoutFlag = 1
                                     continue
-                            
-                            counter += 1
-                            
-                            # 假設連線時雙方送方送成功，接收方接收成功，會馬上送封包回來 = 1 RTT
-                            # 但送方可能drop、收方可能ACK drop
-                            if ((counter%2) == 1):
-                                time_elapsed = (end - start)*1000
-                                if time_elapsed > 600:  # Not delayed ACK
-                                    tcp_header_dict = pkt_fromClient.__dict__.copy()  # 複製一份 __dict__
-                                    del tcp_header_dict['data']  # 移除 data 字段
-                                    print("\t(*A Normal ACK*):")
-                                    print ("\treceive packet : " , tcp_header_dict)
-                            else:
-                                time_elapsed2 = (end - start)*1000
-                                if ((time_elapsed + time_elapsed2) < 600):  
-                                    print("\t(*An delayed ACK received*)")
-                                    tcp_header_dict = pkt_fromClient.__dict__.copy()  # 複製一份 __dict__
-                                    del tcp_header_dict['data']  # 移除 data 字段
-                                    print ("\treceive packet : " , tcp_header_dict)
                         else:
                             break
+
+                    if timeoutFlag == 1:
+                        THRESHOLD /= 2; timeoutFlag = 0
                     RWND -= counter*MSS
+                    if CWND > int(THRESHOLD/MSS):  # CWND threshold , transistion to congestion avoidance
+                        counter =1
                     CWND += counter
-                    print("\t(*CWND %d, RWND %d*)" %(CWND*MSS, RWND))
+                    print("\t(*CWND %d, RWND %d, THRESHOLD %d*)" %(CWND*MSS, RWND , THRESHOLD))
 
                 # 控制封包，代表資料傳遞結束
                 tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
@@ -239,8 +234,11 @@ def handle_request(pkt , client_socket):
                         print("\tPacket dropped: ", tcp_header.__dict__)
                         time.sleep(timeout / 1000)
                         print("\tTimeOut for Retransmitting packet...")
+                        CWND = 1; timeoutFlag = 1
                         continue
                 packet = tcp_header.pack()
+                if timeoutFlag == 1:
+                    THRESHOLD /= 2; timeoutFlag = 0
             else:
                 RWND_update()
                 tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
@@ -259,7 +257,10 @@ def handle_request(pkt , client_socket):
                         print("\tPacket dropped: ", tcp_header.__dict__)
                         time.sleep(timeout / 1000)
                         print("\tTimeOut for Retransmitting packet...")
+                        CWND = 1; timeoutFlag = 1
                         continue
+                if timeoutFlag == 1:
+                    THRESHOLD /= 2; timeoutFlag = 0
                 return
 
 def perform_math(exp):
@@ -290,8 +291,7 @@ def handle_client(client_socket):
     # Receive SYN packet
     packet = client_socket.recv(MSS)
     tcp_header = tcp.TCPHeader.unpack(packet)
-    time.sleep(delay)   # delayed ACK
-    print("\t(*No more new segment, ACK send*)")
+    print("(Receiving SYN packet from client)")
     print("\tReceived SYN packet: ", tcp_header.__dict__)
     # Send SYN-ACK packet
     tcp_header = tcp.TCPHeader(tcp_header.destination_port, tcp_header.source_port, tcp_header.ack_number, tcp_header.sequence_number + 1 , 'A', 65535)
@@ -313,8 +313,6 @@ def handle_client(client_socket):
         client_socket.settimeout(timeout / 1000)
         try:
             recvpkt = client_socket.recv(MSS)
-            time.sleep(delay)   # delayed ACK
-            print("\t(*No more new segment, ACK send*)")
             tcp_header = tcp.TCPHeader.unpack(recvpkt)
             print("\t*Received SYN-ACK packet from server: ", tcp_header.__dict__)
             break  # Exit loop if packet received
@@ -333,8 +331,6 @@ def handle_client(client_socket):
             break
         print("(Task %d)" %(number)); number += 1
         pkt = tcp.TCPHeader.unpack(pkt)
-        time.sleep(delay)   # delayed ACK
-        print("\t(*No more new segment, ACK send*)")
         print ("\treceive packet : " , pkt.__dict__)
         
         lock.acquire()
@@ -352,7 +348,7 @@ def handle_client(client_socket):
                 break  # Exit loop if packet received
             except socket.timeout:
                 print("\tTimeout waiting for Client-ACK, retransmitting packet...")
-        print("\t(cwnd = %d , rwnd = %d)" %(CWND*MSS, RWND))
+        print("\t(cwnd = %d , rwnd = %d , THRESHOLD %d)" %(CWND*MSS, RWND , THRESHOLD))
         print()
         ##############################################
     print("(No more tasks, closing connection)\n")
@@ -376,8 +372,9 @@ def server_program():
             client_socket, addr = server_socket.accept()
             print(f"Connection from {addr}")
             print("\t(Connecting)")
-            global CWND , RWND
-            print("\t(cwnd = %d , rwnd = %d)" %(CWND*MSS, RWND))  # 收到先初始化
+            global CWND , RWND , THRESHOLD
+            THRESHOLD = 64 * 1024  # bytes
+            print("\t(cwnd = %d , rwnd = %d , Threshold %d)" %(CWND*MSS, RWND, THRESHOLD))  # 收到先初始化
             t = threading.Thread(target=handle_client, args=(client_socket,))
             t.start()
 

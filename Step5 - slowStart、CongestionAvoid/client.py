@@ -114,7 +114,6 @@ def client_program():
 
         result = ""   # used to store the result of the request
         # receive response packet (如果很多封包傳的話一直ACK)
-        counter = 0 # 計算是第一個收到，還第二個收到
         time_elapsed = time_elapsed2 = 0    # initial
         while True:
             try:
@@ -124,7 +123,6 @@ def client_program():
                 print("\tTimeout waiting for response packet, retransmitting request packet...")
                 continue
 
-            start = time.time() # delayed ACK收到開始算等待時間
             if len(recvpkt) < 22:   # 不能被正確分析要重讀
                 recvpkt = client_socket.recv(MSS)
 
@@ -141,32 +139,17 @@ def client_program():
             while True:
                 if not should_drop_packet():
                     client_socket.send(packet)
+                    print("\tACK packet sent: ", tcp_header2.__dict__)
                     break
                 else:
                     print("\tACK packet dropped: ", tcp_header2.__dict__)
                     time.sleep(timeout / 1000)
                     print("\tRetransmitting ACK packet...")
                     continue
-        
-            end = time.time() # 等待時間
-            counter += 1
-            if (counter %2 == 1):
-                time_elapsed = (end - start)*1000   # ms
-            else :
-                time_elapsed2 = (end - start)*1000   # ms
-                
-                if time_elapsed2 + time_elapsed > 600: # delayed ACK
-                    print("\t(*No more segment , Normal ACK send*)")
-                    print("\t(*No more segment , Normal ACK send*)")
-                else:
-                    print("\t(*Delayed ACK send*)")
 
             result += tcp_header.data   # update result
             if tcp_header.checksum == 0:    # break condition
                 break
-
-        if counter == 1:
-            print("\t(*No more segment , ACK send*)")
 
         # print this request's result
         if sys.argv[i].endswith('.mp4') or sys.argv[i].endswith('.jpg'):
