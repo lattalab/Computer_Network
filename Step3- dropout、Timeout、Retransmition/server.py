@@ -22,7 +22,7 @@ HOST_IP = '127.0.0.1'   # The server's IP address
 lock = threading.Lock()
 
 # Packet loss
-PoissonMean = 0.01 # 0.000001 , default is 0.000001 but test in 0.01 or bigger
+PoissonMean = 0.1 # 0.000001 , default is 0.000001 but test in 0.01 or bigger
 def should_drop_packet():
     # sampled from poisson distribution , if the value is greater than 0, then drop the packet
     num = npr.poisson(PoissonMean)
@@ -39,7 +39,7 @@ def contains_math_operators(s, operators):
     return any(op in s for op in operators)
 
 def is_math_expression(s):  # 判斷是否是合法的數學運算式
-    math_operators = ['+', '-', '*', '/', '^', 'sqrt']
+    math_operators = ['+', '-', '*', '/', '^', 'sqrt' , '0' , '1' , '2' , '3' , '4' , '5' , '6' , '7' , '8' , '9' , '.']
     # 如果是合法的domain name，Return False
     if is_domain_name(s):
         return False
@@ -55,14 +55,20 @@ def handle_request(pkt , client_socket):
     # check FIN flag
     if pkt.flags == 'F':
         print("(trying to terminate TCP connection)")
-        tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, pkt.ack_number, pkt.sequence_number+1, 'A', 65535)
-        packet = tcp_header.pack()
-        client_socket.send(packet)
-        print("\tSent ACK packet: ", tcp_header.__dict__)
+
+        # Send Server-FIN packet
         tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, pkt.ack_number, pkt.sequence_number+1, 'F', 65535)
         packet = tcp_header.pack()
-        client_socket.send(packet)
-        print("\tSent FIN packet: ", tcp_header.__dict__)
+        while True:
+            if not should_drop_packet():
+                client_socket.send(packet)
+                print("\tSent  Server-FIN packet: ", tcp_header.__dict__)
+                break
+            else:
+                print("\tPacket dropped: ", tcp_header.__dict__)
+                time.sleep(timeout / 1000)
+                print("\tTimeOut for Retransmitting Server-FIN packet...")
+                continue
         return
 
     # check if a valid arithmetic operation
@@ -109,7 +115,7 @@ def handle_request(pkt , client_socket):
                 return 
             except: # DNS Failed
                 tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
-                                        pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data="DNS lookup failed")
+                                        pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data="DNS lookup failed or file failed")
                 packet = tcp_header.pack()
                 while True:
                     if not should_drop_packet():
@@ -227,23 +233,24 @@ def handle_client(client_socket):
         if not should_drop_packet():
             client_socket.send(packet)
             print("\tSent SYN-ACK packet: ", tcp_header.__dict__)
+            break
         else:
             print("\tSYN-ACK packet dropped: ", tcp_header.__dict__)
             time.sleep(timeout / 1000)
             print("\tTimeOut for Retransmitting SYN-ACK packet...")
             continue
 
-        # Receive ACK packet
-        while True:
-            client_socket.settimeout(timeout / 1000)
-            try:
-                recvpkt = client_socket.recv(MSS)
-                tcp_header = tcp.TCPHeader.unpack(recvpkt)
-                print("\t*Received SYN-ACK packet from server: ", tcp_header.__dict__)
-                break  # Exit loop if packet received
-            except socket.timeout:
-                print("\tTimeout waiting for Client-ACK, retransmitting SYN-ACK packet...")
-        break   # Exit loop if ACK received
+    # Receive ACK packet
+    while True:
+        client_socket.settimeout(timeout / 1000)
+        try:
+            recvpkt = client_socket.recv(MSS)
+            tcp_header = tcp.TCPHeader.unpack(recvpkt)
+            print("\t*Received SYN-ACK packet from server: ", tcp_header.__dict__)
+            break  # Exit loop if packet received
+        except socket.timeout:
+            print("\tTimeout waiting for Client-ACK, retransmitting SYN-ACK packet...")
+        
     # TCP connection established
     print("(TCP connection established)\n")
 

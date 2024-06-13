@@ -13,7 +13,7 @@ THRESHOLD = 64 * 1024  # bytes
 RECEIVER_BUFFER_SIZE = 512 * 1024  # bytes
 
 # Packet loss
-PoissonMean = 0.01 # 0.000001 , default is 0.000001 but test in 0.01 or bigger
+PoissonMean = 0.1 # 0.000001 , default is 0.000001 but test in 0.01 or bigger
 def should_drop_packet():
     # sampled from poisson distribution , if the value is greater than 0, then drop the packet
     num = npr.poisson(PoissonMean)
@@ -47,24 +47,25 @@ def client_program():
         if not should_drop_packet():
             client_socket.send(packet)
             print("\tSYN packet sent: (seq=42, ACK=79, SYN=1), waiting for server's response...")
+            break
         else:
             print("\tSYN packet dropped: (seq=42, ACK=79, SYN=1)")
             time.sleep(timeout / 1000)
             print("\tTimeOut for Retransmitting SYN packet...")
             continue
 
-        # Wait for SYN-ACK packet
-        # 沒收到timeout發生，於是請求Client重送
-        while True:
-            client_socket.settimeout(timeout / 1000)
-            try:
-                recvpkt = client_socket.recv(MSS)
-                tcp_header = tcp.TCPHeader.unpack(recvpkt)
-                print("\t*Received SYN-ACK packet from server: ", tcp_header.__dict__)
-                break  # Exit loop if packet received
-            except socket.timeout:
-                print("\tTimeout waiting for SYN-ACK, retransmitting SYN packet...")
-        break   # Exit loop if SYN-ACK received
+    # Wait for SYN-ACK packet
+    # 沒收到timeout發生，於是請求Client重送
+    while True:
+        client_socket.settimeout(timeout / 1000)
+        try:
+            recvpkt = client_socket.recv(MSS)
+            tcp_header = tcp.TCPHeader.unpack(recvpkt)
+            print("\t*Received SYN-ACK packet from server: ", tcp_header.__dict__)
+            break  # Exit loop if packet received
+        except socket.timeout:
+            print("\tTimeout waiting for SYN-ACK, retransmitting SYN packet...")
+            continue
 
     # Send ACK packet
     tcp_header = tcp.TCPHeader(client_port, PORT, 43, 80, 'A', 65535)
@@ -151,19 +152,39 @@ def client_program():
     print("\n(No more tasks)")
     closepkt = tcp.TCPHeader(client_port, PORT, 5, 10, 'F', 65535)
     closepkt = closepkt.pack()
-    client_socket.send(closepkt)
-    print("\tFIN packet sent")
-    # Receive Server ACK packet
-    recvpkt = client_socket.recv(MSS)
-    tcp_header = tcp.TCPHeader.unpack(recvpkt)
-    print("\tReceived ACK packet: ", tcp_header.__dict__)
+    # Send FIN packet with possible drops and retransmission
+    while True:
+        if not should_drop_packet():
+            client_socket.send(closepkt)
+            print("\tFIN packet sent")
+        else:
+            print("\tFIN packet dropped")
+            time.sleep(timeout / 1000)
+            print("\tTimeOut for Retransmitting FIN packet...")
+            continue
+        break
+
     # Receive Server FIN packet
-    recvpkt = client_socket.recv(MSS)
-    tcp_header = tcp.TCPHeader.unpack(recvpkt)
-    print("\tReceived FIN packet: ", tcp_header.__dict__)
+    while True:
+        client_socket.settimeout(timeout / 1000)
+        try:
+            recvpkt = client_socket.recv(MSS)
+            tcp_header = tcp.TCPHeader.unpack(recvpkt)
+            print("\tReceived FIN packet: ", tcp_header.__dict__)
+            break
+        except socket.timeout:
+            print("\tTimeout waiting for Server-FIN packet, retransmitting Server-FIN packet...")
+
     # sent ACK packet
     closepkt = tcp.TCPHeader(client_port, PORT, tcp_header.ack_number, tcp_header.sequence_number+1, 'A', 65535)
     closepkt = closepkt.pack()
+    while True:
+        if not should_drop_packet():
+            break
+        else:
+            print("\tACK packet dropped: ", tcp_header2.__dict__)
+            time.sleep(timeout / 1000)
+            print("\tRetransmitting ACK packet...")
     client_socket.send(closepkt)
     print("\tACK packet sent: ")
     print("End connection")

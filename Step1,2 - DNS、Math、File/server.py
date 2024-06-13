@@ -24,7 +24,7 @@ def contains_math_operators(s, operators):
     return any(op in s for op in operators)
 
 def is_math_expression(s):  # 判斷是否是合法的數學運算式
-    math_operators = ['+', '-', '*', '/', '^', 'sqrt']
+    math_operators = ['+', '-', '*', '/', '^', 'sqrt' , '0' , '1' , '2' , '3' , '4' , '5' , '6' , '7' , '8' , '9' , '.']
     # 如果是合法的domain name，Return False
     if is_domain_name(s):
         return False
@@ -77,7 +77,7 @@ def handle_request(pkt , client_socket):
                 return 
             except:
                 tcp_header = tcp.TCPHeader(pkt.destination_port, pkt.source_port, 
-                                        pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data="DNS lookup failed")
+                                        pkt.ack_number, pkt.sequence_number+len(pkt.data)+1, 'P', 65535, data="DNS lookup failed or File failed")
                 packet = tcp_header.pack()
                 client_socket.send(packet)
                 print("\tSent packet: ", tcp_header.__dict__)
