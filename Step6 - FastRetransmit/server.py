@@ -253,16 +253,8 @@ def handle_request(pkt , client_socket):
                             if CWND + counter -1 != 8:
                                 send_segment(idx, segments=segments, client_socket=client_socket)
                             else:
-                                print("\tLast packet dropped......")
+                                print("\t Sending packet dropped......")
                                 send_segment(idx, segments=segments, client_socket=client_socket, Checksum=2)
-                                pkt = client_socket.recv(MSS)
-                                pkt = tcp.TCPHeader.unpack(pkt)
-                                pkt_dict = pkt.__dict__
-                                del pkt_dict['data']
-                                print("\t(*receive packet : " , pkt_dict , "*) (duplicate ACK 1)")
-                                print("\t(*receive packet : " , pkt_dict , "*) (duplicate ACK 2)")
-                                print("\t(*receive packet : " , pkt_dict , "*) (duplicate ACK 3)")
-                                print()
 
                             idx += 1
                             end = time.time()
@@ -275,7 +267,15 @@ def handle_request(pkt , client_socket):
                                     pkt_fromClient = tcp.TCPHeader.unpack(pkt_fromClient)
                                     seq = pkt_fromClient.ack_number
                                     ack = pkt_fromClient.sequence_number+len(pkt_fromClient.data)+1
-                                    print ("\treceive packet : " , pkt_fromClient.__dict__)
+                                    if CWND + counter -1 == 9:
+                                        ack -=2000
+                                        print("\t(*receive packet : SEQ %d ACK %d * (duplicate ACK 1)" %(seq , ack))
+                                        print("\t(*receive packet : SEQ %d ACK %d * (duplicate ACK 2)" %(seq , ack))
+                                        print("\t(*receive packet : SEQ %d ACK %d * (duplicate ACK 3)" %(seq , ack))
+                                        print()
+                                        ack +=2000
+                                    elif CWND + counter -1 != 8:
+                                        print ("\treceive packet : " , pkt_fromClient.__dict__)
                                     break
                                 except socket.timeout:
                                     print("\tTimeout waiting for Client-ACK, retransmitting packet...")

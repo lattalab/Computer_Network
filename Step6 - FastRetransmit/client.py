@@ -131,24 +131,22 @@ def client_program():
 
             print("\tReceived response packet: ", tcp_header_dict)
 
-            if tcp_header.checksum == 2:    # send duplicate ACK
-                print("\t(*sending duplicate ACK...*)")
-                dup = tcp.TCPHeader(client_port, PORT, tcp_header.sequence_number, tcp_header.ack_number-MSS,
-                                   'A', 65535)
-                tcp_header.checksum = 0
-                print("\tACK packet sent (seq, ack):", dup.__dict__['sequence_number'] , tcp_header.__dict__['ack_number'])
-                client_socket.send(dup.pack())
-                if len(tcp_header.data) == 1000:
-                    pass
-
         # response ACK packet
             tcp_header2 = tcp.TCPHeader(client_port, PORT, 
                                         tcp_header.ack_number, tcp_header.sequence_number+len(tcp_header.data)+1, 'A', 65535)
+
             packet = tcp_header2.pack()
+
             while True:
                 if not should_drop_packet():
-                    pkt = client_socket.send(packet)
-                    print("\tACK packet sent: ", tcp_header2.__dict__)
+                    if tcp_header.checksum == 2:    # when received dropped packet
+                        tcp_header.checksum = 1
+                        pkt = client_socket.send(packet)
+                        tcp_header2.sequence_number += 1024
+                        print("\tAn gapped detected, ACK = %d , SEQ = %d" %(tcp_header2.ack_number, tcp_header2.sequence_number))
+                    else:
+                        pkt = client_socket.send(packet)
+                        print("\tACK packet sent: ", tcp_header2.__dict__)
                     break
                 else:
                     print("\tACK packet dropped: ", tcp_header2.__dict__)
