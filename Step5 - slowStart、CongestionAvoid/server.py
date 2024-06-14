@@ -335,7 +335,6 @@ def handle_client(client_socket):
         
         lock.acquire()
         handle_request(pkt , client_socket) # handle the request
-        lock.release()
 
         # wait for client's ACK
         CWND += 1
@@ -350,6 +349,7 @@ def handle_client(client_socket):
                 print("\tTimeout waiting for Client-ACK, retransmitting packet...")
         print("\t(cwnd = %d , rwnd = %d , THRESHOLD %d)" %(CWND*MSS, RWND , THRESHOLD))
         print()
+        lock.release()
         ##############################################
     print("(No more tasks, closing connection)\n")
     client_socket.close()

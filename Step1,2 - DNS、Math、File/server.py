@@ -164,14 +164,14 @@ def handle_client(client_socket):
         
         lock.acquire()
         handle_request(pkt , client_socket) # handle the request
-        lock.release()
-
+        
         # wait for client's ACK
         pkt_fromClient = client_socket.recv(MSS)
         pkt_fromClient = tcp.TCPHeader.unpack(pkt_fromClient)
         print ("\treceive packet : " , pkt_fromClient.__dict__)
         print()
-
+        lock.release()
+        
     print("(No more tasks, closing connection)\n")
     client_socket.close()
     return
