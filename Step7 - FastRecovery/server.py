@@ -62,6 +62,26 @@ def RWND_update():
     if RWND < 10*MSS:
         RWND = RECEIVER_BUFFER_SIZE
 
+dup_ACK = 0
+def fastRecovery():
+    global CWND, THRESHOLD, dup_ACK
+    rand = random.randint(0,2)
+    if rand == 0:
+        print("\t Received Duplicated ACK")
+        CWND = CWND + 1
+        return 0
+    elif  rand == 1:
+        print("\t Timeout, transition to Slow start")
+        THRESHOLD = CWND/2
+        CWND = 1
+        dup_ACK = 0
+        return 1
+    else:
+        print("\t New ACK!, transition to Congestion Avoidance")
+        CWND = THRESHOLD
+        dup_ACK = 0
+        return 2
+
 def handle_request(pkt , client_socket):
     global RWND ,CWND , THRESHOLD
     payload = str(pkt.data)  # The payload of the packet
@@ -75,18 +95,8 @@ def handle_request(pkt , client_socket):
         packet = tcp_header.pack()
         while True:
             if not should_drop_packet():
-                if CWND != 8:
-                    client_socket.send(packet)
-                    print("\tSent  Server-FIN packet: ", tcp_header.__dict__)
-                else:
-                    print("\tLast packet dropped......")
-                    time.sleep(timeout / 1000)
-                    time.sleep(timeout / 1000)
-                    time.sleep(timeout / 1000)
-                    print("\t 3 duplicate ACK received", tcp_header.__dict__)
-                    print("\t(*Fast Retransmit*)")
-                    client_socket.send(packet)
-                break
+                client_socket.send(packet)
+                print("\tSent  Server-FIN packet: ", tcp_header.__dict__)
             else:
                 print("\tPacket dropped: ", tcp_header.__dict__)
                 time.sleep(timeout / 1000)
@@ -262,6 +272,11 @@ def handle_request(pkt , client_socket):
                                 print("\t(*receive packet : " , pkt_dict , "*) (duplicate ACK 1)")
                                 print("\t(*receive packet : " , pkt_dict , "*) (duplicate ACK 2)")
                                 print("\t(*receive packet : " , pkt_dict , "*) (duplicate ACK 3)")
+                                # state transition
+                                while True:
+                                    value = fastRecovery()
+                                    if value >0:
+                                        break
                                 print()
 
                             idx += 1

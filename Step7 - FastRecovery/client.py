@@ -5,6 +5,7 @@ import sys # for command line arguments
 import tcp # import TCPHeader class
 import time # for sleep
 import numpy.random as npr # for poisson distribution
+from server import CWND, RWND
 
 # Define parameters
 INITIAL_RTT = 30  # milliseconds
